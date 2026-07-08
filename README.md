@@ -71,6 +71,35 @@ uses that channel to:
 - call Hermes with `handle_message`;
 - post replies to `POST /api/runtime-channels/:agentId/runtime/messages`.
 
+## Approve the Forge Sender
+
+Forge channel pairing connects the runtime to Forge. Hermes may still require
+approval for the Forge sender before it will answer messages. If the first
+message returns something like:
+
+```text
+Hi~ I don't recognize you yet!
+Here's your pairing code: `432SHUS9`
+Ask the bot owner to run:
+`hermes pairing approve forge 432SHUS9`
+```
+
+run that approval command on the Hermes machine:
+
+```bash
+hermes pairing approve forge 432SHUS9
+```
+
+For a private single-user Forge deployment, you can opt out of sender approval:
+
+```bash
+hermes config set FORGE_ALLOW_ALL_USERS true
+hermes gateway restart
+```
+
+Keep the default approval flow if multiple people can access the Forge
+workspace.
+
 ## Runtime Inspection
 
 Messages only need the Forge channel above. Forge Console can also ask the

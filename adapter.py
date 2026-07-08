@@ -36,6 +36,7 @@ _ENV_TO_EXTRA = {
     "FORGE_RUNTIME_NAME": "runtime_name",
     "FORGE_CHANNEL_URL": "channel_url",
     "FORGE_CHANNEL_TOKEN": "channel_token",
+    "FORGE_ALLOW_ALL_USERS": "allow_all_users",
 }
 
 _IMPORT_ENV = {key: os.getenv(key, "").strip() for key in _ENV_TO_EXTRA}
