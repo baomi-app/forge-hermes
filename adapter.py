@@ -165,7 +165,7 @@ class ForgePlatformAdapter(BasePlatformAdapter):
                     self.channel_token,
                 )
                 if not item:
-                    await asyncio.sleep(1.5)
+                    await asyncio.sleep(0.1)
                     continue
                 if item.get("kind") == "command":
                     await self._handle_command(item)
