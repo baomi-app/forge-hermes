@@ -582,7 +582,8 @@ def _execute_hermes_command(base_url: str, api_key: str, method: str, path: str,
         method=method,
     )
     try:
-        with urllib.request.urlopen(request, timeout=55) as response:
+        timeout = 115 if hermes_path.endswith("/chat/stream") else 55
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             text = response.read().decode("utf-8")
             return response.status, response.headers.get("content-type", "application/json; charset=utf-8"), text
     except urllib.error.HTTPError as error:
@@ -595,6 +596,9 @@ def _hermes_api_path(path: str) -> str:
         return path
     if path == "/capabilities" or path.startswith("/capabilities?"):
         return path.replace("/capabilities", "/v1/capabilities", 1)
+    stream_match = path.startswith("/sessions/") and path.endswith("/messages/stream")
+    if stream_match:
+        return f"/api{path.removesuffix('/messages/stream')}/chat/stream"
     if path == "/sessions" or path.startswith("/sessions?") or path.startswith("/sessions/"):
         return f"/api{path}"
     if path == "/automations" or path.startswith("/automations?"):

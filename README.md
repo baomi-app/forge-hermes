@@ -68,8 +68,16 @@ After pairing, Forge returns a private channel URL and bearer token. The adapter
 uses that channel to:
 
 - poll `GET /api/runtime-channels/:agentId/runtime/poll` for user messages;
+- poll the same endpoint for runtime-inspection commands such as sessions,
+  automations, and session chat;
 - call Hermes with `handle_message`;
-- post replies to `POST /api/runtime-channels/:agentId/runtime/messages`.
+- post replies to `POST /api/runtime-channels/:agentId/runtime/messages`;
+- post command responses to `POST /api/runtime-channels/:agentId/runtime/commands/:commandId/response`.
+
+Forge must never call the Hermes machine directly in this plugin mode. The
+Hermes runtime can sit behind NAT, a home router, or a private network with no
+public inbound address. Forge only stores pending channel messages and commands;
+the plugin is the outbound client that fetches work and sends results back.
 
 ## Approve the Forge Sender
 
@@ -102,9 +110,11 @@ workspace.
 
 ## Runtime Inspection
 
-Messages only need the Forge channel above. Forge Console can also ask the
-plugin to inspect runtime-owned state such as sessions, scheduled jobs, job
-runs, and run events.
+Forge Console can also ask the plugin to inspect runtime-owned state such as
+sessions, scheduled jobs, job runs, and run events. These requests are still
+delivered through the Forge channel queue. Forge Server does not open an HTTP
+connection to Hermes; the plugin polls for the command, calls the local Hermes
+API from the Hermes machine, and posts the response back to Forge.
 
 For inspection, enable the Hermes API server on the same machine. The plugin
 auto-discovers the local Hermes API settings from `~/.hermes/.env`,
@@ -139,7 +149,7 @@ hermes config set FORGE_CHANNEL_TOKEN your-channel-token
 This is an alpha adapter. Message replies use the Forge runtime channel.
 Sessions, automations, runs, and run events are command-proxied to the local
 Hermes API discovered on the Hermes machine, so Hermes remains the source of
-truth without requiring Forge to know the Hermes API endpoint.
+truth without requiring Forge to know or reach the Hermes API endpoint.
 
 Keeping this as a Hermes plugin avoids patching Hermes core and keeps the
 runtime connection usable from private networks.
