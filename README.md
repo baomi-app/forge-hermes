@@ -44,10 +44,12 @@ Create a pairing code in Forge Console:
 3. Choose `Hermes`.
 4. Click `Create pairing code`.
 
-On the Hermes machine, run the command shown by Forge:
+On the Hermes machine, run the command shown by Forge Console. The server URL
+is deployment-specific and should come from your Forge Console, not from this
+README:
 
 ```bash
-hermes config set FORGE_SERVER_URL https://api.forge.baomi.app
+hermes config set FORGE_SERVER_URL https://your-forge-server.example.com
 hermes config set FORGE_PAIRING_CODE ABCD-EFGH
 hermes config set FORGE_RUNTIME_NAME Hermes
 hermes gateway restart
@@ -96,10 +98,10 @@ If runtime inspection is not configured, Forge channel messaging still works,
 but Console views that depend on Hermes-owned state may be unavailable.
 
 If you want the adapter to reconnect without a new pairing code, persist the
-returned channel values as:
+returned channel values from the pairing response:
 
 ```bash
-hermes config set FORGE_CHANNEL_URL https://api.forge.baomi.app/api/runtime-channels/agent_xxx
+hermes config set FORGE_CHANNEL_URL https://your-forge-server.example.com/api/runtime-channels/agent_xxx
 hermes config set FORGE_CHANNEL_TOKEN your-channel-token
 ```
 
