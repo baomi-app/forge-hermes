@@ -36,8 +36,6 @@ _ENV_TO_EXTRA = {
     "FORGE_RUNTIME_NAME": "runtime_name",
     "FORGE_CHANNEL_URL": "channel_url",
     "FORGE_CHANNEL_TOKEN": "channel_token",
-    "FORGE_HERMES_API_URL": "hermes_api_url",
-    "FORGE_HERMES_API_KEY": "hermes_api_key",
 }
 
 _IMPORT_ENV = {key: os.getenv(key, "").strip() for key in _ENV_TO_EXTRA}
@@ -94,13 +92,7 @@ class ForgePlatformAdapter(BasePlatformAdapter):
             "pairingCode": self.pairing_code,
             "runtimeInstanceId": os.uname().nodename if hasattr(os, "uname") else "hermes",
             "name": self.runtime_name,
-            "capabilities": [
-                "sessions",
-                "automations",
-                "runs",
-                "run_events",
-                "model_config",
-            ],
+            "capabilities": _reported_capabilities(self.hermes_api_key),
         }
         result = await asyncio.to_thread(
             _post_json,
@@ -121,8 +113,6 @@ class ForgePlatformAdapter(BasePlatformAdapter):
                 "channel_token": self.channel_token,
                 "runtime_name": self.runtime_name,
                 "agent_id": self.agent_id or "",
-                "hermes_api_url": self.hermes_api_url,
-                "hermes_api_key": self.hermes_api_key,
             }
         )
         _debug(f"paired agent={self.agent_id or 'unknown'}")
@@ -262,8 +252,6 @@ def register(ctx) -> None:
                 "FORGE_RUNTIME_NAME",
                 "FORGE_CHANNEL_URL",
                 "FORGE_CHANNEL_TOKEN",
-                "FORGE_HERMES_API_URL",
-                "FORGE_HERMES_API_KEY",
             ],
             "env_enablement_fn": _env_enablement,
             "apply_yaml_config_fn": _apply_yaml_config,
@@ -288,8 +276,6 @@ def register(ctx) -> None:
                 "FORGE_RUNTIME_NAME",
                 "FORGE_CHANNEL_URL",
                 "FORGE_CHANNEL_TOKEN",
-                "FORGE_HERMES_API_URL",
-                "FORGE_HERMES_API_KEY",
             ],
         )
         _debug("register_platform minimal succeeded")
@@ -422,23 +408,90 @@ def _first_config_value(yaml_cfg: dict, platform_cfg: dict, env_key: str, extra_
 
 def _hermes_api_url(config: PlatformConfig) -> str:
     for key in ["FORGE_HERMES_API_URL", "HERMES_API_URL", "API_SERVER_URL", "HERMES_ENDPOINT"]:
-        value = _config_value(config, key)
+        value = _config_value(config, key) or _local_hermes_value(key)
         if value:
             return value.rstrip("/")
-    return "http://127.0.0.1:8765"
+    host = _local_hermes_value("API_SERVER_HOST") or _local_hermes_value("HOST") or "127.0.0.1"
+    port = _local_hermes_value("API_SERVER_PORT") or "8642"
+    scheme = _local_hermes_value("API_SERVER_SCHEME") or "http"
+    return f"{scheme}://{host}:{port}"
 
 
 def _hermes_api_key(config: PlatformConfig) -> str:
     for key in ["FORGE_HERMES_API_KEY", "HERMES_API_KEY", "API_SERVER_KEY", "HERMES_API_TOKEN"]:
-        value = _config_value(config, key)
+        value = _config_value(config, key) or _local_hermes_value(key)
         if value:
             return value
     return ""
 
 
+def _reported_capabilities(api_key: str) -> list[str]:
+    capabilities = ["sessions"]
+    if api_key:
+        capabilities.extend(["automations", "runs", "run_events", "model_config"])
+    return capabilities
+
+
+def _local_hermes_value(key: str) -> str:
+    env_value = os.environ.get(key, "").strip()
+    if env_value:
+        return env_value
+    env_file = _load_hermes_env_file()
+    value = env_file.get(key, "").strip()
+    if value:
+        return value
+    config_file = _load_hermes_yaml_config()
+    return str(config_file.get(key, "") or config_file.get(key.lower(), "")).strip()
+
+
+def _load_hermes_env_file() -> dict[str, str]:
+    try:
+        path = Path(os.getenv("HERMES_ENV_PATH") or _hermes_home() / ".env")
+        if not path.exists():
+            return {}
+        values: dict[str, str] = {}
+        for line in path.read_text(encoding="utf-8").splitlines():
+            text = line.strip()
+            if not text or text.startswith("#") or "=" not in text:
+                continue
+            key, value = text.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key:
+                values[key] = value
+        return values
+    except Exception as exc:
+        _debug(f"env file load failed error={exc}")
+        return {}
+
+
+def _load_hermes_yaml_config() -> dict[str, str]:
+    try:
+        path = Path(os.getenv("HERMES_CONFIG_PATH") or _hermes_home() / "config.yaml")
+        if not path.exists():
+            return {}
+        values: dict[str, str] = {}
+        for line in path.read_text(encoding="utf-8").splitlines():
+            text = line.strip()
+            if not text or text.startswith("#") or ":" not in text:
+                continue
+            key, value = text.split(":", 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key:
+                values[key] = value
+        return values
+    except Exception as exc:
+        _debug(f"yaml config load failed error={exc}")
+        return {}
+
+
 def _state_path() -> Path:
-    home = Path(os.getenv("HERMES_HOME") or Path.home() / ".hermes")
-    return home / "forge-channel.json"
+    return _hermes_home() / "forge-channel.json"
+
+
+def _hermes_home() -> Path:
+    return Path(os.getenv("HERMES_HOME") or Path.home() / ".hermes")
 
 
 def _load_state() -> dict[str, Any]:
@@ -468,8 +521,7 @@ def _debug(message: str) -> None:
     if os.getenv("FORGE_DEBUG", "").lower() not in {"1", "true", "yes", "on"}:
         return
     try:
-        home = Path(os.getenv("HERMES_HOME") or Path.home() / ".hermes")
-        path = home / "forge-plugin-debug.log"
+        path = _hermes_home() / "forge-plugin-debug.log"
         timestamp = datetime.now(timezone.utc).isoformat()
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as handle:

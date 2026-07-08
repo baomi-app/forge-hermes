@@ -6,27 +6,51 @@ connection from the runtime side.
 
 ## Install
 
-From this repository:
+Install the plugin on the machine that runs `hermes gateway`.
+
+From a checkout of the Forge monorepo:
 
 ```bash
 mkdir -p ~/.hermes/plugins
 cp -R forge-hermes ~/.hermes/plugins/forge
 ```
 
-Then create a pairing code in Forge Console:
+Or install directly from GitHub:
+
+```bash
+mkdir -p ~/.hermes/plugins
+rm -rf ~/.hermes/plugins/forge
+git clone https://github.com/baomi-app/forge-hermes.git ~/.hermes/plugins/forge
+```
+
+Restart the Hermes gateway so it loads the plugin:
+
+```bash
+hermes gateway restart
+```
+
+If you run the gateway in the foreground, stop it and start it again:
+
+```bash
+hermes gateway run
+```
+
+## Pair With Forge Console
+
+Create a pairing code in Forge Console:
 
 1. Open `Agents`.
 2. Click `New`.
 3. Choose `Hermes`.
 4. Click `Create pairing code`.
 
-Configure Hermes with the values shown by Forge:
+On the Hermes machine, run the command shown by Forge:
 
 ```bash
 hermes config set FORGE_SERVER_URL https://api.forge.baomi.app
 hermes config set FORGE_PAIRING_CODE ABCD-EFGH
 hermes config set FORGE_RUNTIME_NAME Hermes
-hermes gateway
+hermes gateway restart
 ```
 
 The plugin calls:
@@ -45,23 +69,31 @@ uses that channel to:
 - call Hermes with `handle_message`;
 - post replies to `POST /api/runtime-channels/:agentId/runtime/messages`.
 
-Forge can also ask the plugin to query the local Hermes API for runtime-owned
-state such as sessions, scheduled jobs, job runs, and run events. Configure how
-the plugin reaches that API on the machine running this Hermes runtime:
+## Runtime Inspection
+
+Messages only need the Forge channel above. Forge Console can also ask the
+plugin to inspect runtime-owned state such as sessions, scheduled jobs, job
+runs, and run events.
+
+For inspection, enable the Hermes API server on the same machine. The plugin
+auto-discovers the local Hermes API settings from `~/.hermes/.env`,
+`~/.hermes/config.yaml`, or the process environment:
 
 ```bash
-hermes config set FORGE_HERMES_API_URL https://hermes.baomi.app
-hermes config set FORGE_HERMES_API_KEY your-hermes-api-server-key
+hermes config set API_SERVER_ENABLED true
+hermes config set API_SERVER_KEY your-hermes-api-server-key
+hermes gateway restart
 ```
 
-Forge does not infer these values during pairing. Pairing only creates the
-Forge channel; API inspection uses the Hermes API settings local to the paired
-runtime.
-
-The same values can be provided as environment variables. The plugin checks
-`FORGE_HERMES_API_URL`, `HERMES_API_URL`, `API_SERVER_URL`, then
+No Forge-specific Hermes API URL/key is required. The plugin defaults to the
+local Hermes API server at `http://127.0.0.1:8642` and reads `API_SERVER_KEY`
+locally. Legacy overrides are still supported for debugging:
+`FORGE_HERMES_API_URL`, `HERMES_API_URL`, `API_SERVER_URL`, or
 `HERMES_ENDPOINT` for the API URL, and `FORGE_HERMES_API_KEY`,
-`HERMES_API_KEY`, `API_SERVER_KEY`, then `HERMES_API_TOKEN` for the bearer key.
+`HERMES_API_KEY`, `API_SERVER_KEY`, or `HERMES_API_TOKEN` for the bearer key.
+
+If runtime inspection is not configured, Forge channel messaging still works,
+but Console views that depend on Hermes-owned state may be unavailable.
 
 If you want the adapter to reconnect without a new pairing code, persist the
 returned channel values as:
@@ -74,8 +106,9 @@ hermes config set FORGE_CHANNEL_TOKEN your-channel-token
 ## Current Status
 
 This is an alpha adapter. Message replies use the Forge runtime channel.
-Sessions, automations, runs, and run events are command-proxied back to the
-Hermes API so Hermes remains the source of truth.
+Sessions, automations, runs, and run events are command-proxied to the local
+Hermes API discovered on the Hermes machine, so Hermes remains the source of
+truth without requiring Forge to know the Hermes API endpoint.
 
 Keeping this as a Hermes plugin avoids patching Hermes core and keeps the
 runtime connection usable from private networks.
