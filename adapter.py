@@ -38,6 +38,8 @@ _ENV_TO_EXTRA = {
     "FORGE_CHANNEL_TOKEN": "channel_token",
 }
 
+_IMPORT_ENV = {key: os.getenv(key, "").strip() for key in _ENV_TO_EXTRA}
+
 _HTTP_HEADERS = {
     "accept": "application/json",
     "user-agent": "Forge-Hermes/0.1 (+https://github.com/baomi-app/forge-hermes)",
@@ -296,6 +298,9 @@ def _supported_platform_entry_kwargs(entry_kwargs: dict[str, Any]) -> dict[str, 
 
 
 def _config_value(config: PlatformConfig, key: str, default: str = "") -> str:
+    import_value = _IMPORT_ENV.get(key)
+    if import_value:
+        return import_value
     env_value = os.environ.get(key)
     if env_value:
         return env_value
@@ -312,6 +317,8 @@ def _config_value(config: PlatformConfig, key: str, default: str = "") -> str:
 
 
 def _config_source(config: PlatformConfig, key: str) -> str:
+    if _IMPORT_ENV.get(key):
+        return "import_env"
     if os.environ.get(key):
         return "env"
     extra = getattr(config, "extra", None)
@@ -361,6 +368,12 @@ def _short_secret_hash(value: str) -> str:
 
 
 _debug("module imported")
+_debug(
+    "import env "
+    f"server={bool(_IMPORT_ENV.get('FORGE_SERVER_URL'))} "
+    f"pairing={_short_secret_hash(_IMPORT_ENV.get('FORGE_PAIRING_CODE', ''))} "
+    f"channel={bool(_IMPORT_ENV.get('FORGE_CHANNEL_URL'))}"
+)
 
 
 def _post_json(url: str, payload: dict[str, Any], token: str = "") -> dict[str, Any]:
