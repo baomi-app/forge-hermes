@@ -57,6 +57,13 @@ class ForgePlatformAdapter(BasePlatformAdapter):
         self.channel_url = _config_value(config, "FORGE_CHANNEL_URL").rstrip("/")
         self.channel_token = _config_value(config, "FORGE_CHANNEL_TOKEN")
         self.runtime_name = _config_value(config, "FORGE_RUNTIME_NAME", "Hermes")
+        _debug(
+            "resolved config "
+            f"server={_config_source(config, 'FORGE_SERVER_URL')} "
+            f"pairing={_config_source(config, 'FORGE_PAIRING_CODE')}:{_short_secret_hash(self.pairing_code)} "
+            f"channel={_config_source(config, 'FORGE_CHANNEL_URL')} "
+            f"runtime={_config_source(config, 'FORGE_RUNTIME_NAME')}"
+        )
         self.agent_id: Optional[str] = None
         self._poll_task: Optional[asyncio.Task] = None
 
@@ -294,6 +301,19 @@ def _config_value(config: PlatformConfig, key: str, default: str = "") -> str:
     if value:
         return str(value)
     return default
+
+
+def _config_source(config: PlatformConfig, key: str) -> str:
+    if os.environ.get(key):
+        return "env"
+    extra = getattr(config, "extra", None)
+    if isinstance(extra, dict):
+        extra_key = _ENV_TO_EXTRA.get(key, key.lower())
+        if extra.get(key) or extra.get(key.lower()) or extra.get(extra_key):
+            return "extra"
+    if getattr(config, key.lower(), None) or getattr(config, _ENV_TO_EXTRA.get(key, key.lower()), None):
+        return "attribute"
+    return "default"
 
 
 def _first_config_value(yaml_cfg: dict, platform_cfg: dict, env_key: str, extra_key: str) -> Optional[Any]:
