@@ -1,0 +1,13 @@
+name: forge
+label: Forge Console
+kind: platform
+version: 0.1.0
+description: Connect Hermes Gateway to Forge as a messaging channel.
+author: baomi-app
+requires_env:
+  - FORGE_SERVER_URL
+  - FORGE_PAIRING_CODE
+optional_env:
+  - FORGE_RUNTIME_NAME
+  - FORGE_CHANNEL_URL
+  - FORGE_CHANNEL_TOKEN
