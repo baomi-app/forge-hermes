@@ -114,6 +114,17 @@ class ForgePlatformAdapter(BasePlatformAdapter):
         self.channel_token = str(result.get("channelToken") or self.channel_token)
         if not self.channel_url or not self.channel_token:
             raise RuntimeError("Forge pairing did not return channelUrl/channelToken")
+        _save_state(
+            {
+                "server_url": self.server_url,
+                "channel_url": self.channel_url,
+                "channel_token": self.channel_token,
+                "runtime_name": self.runtime_name,
+                "agent_id": self.agent_id or "",
+                "hermes_api_url": self.hermes_api_url,
+                "hermes_api_key": self.hermes_api_key,
+            }
+        )
         _debug(f"paired agent={self.agent_id or 'unknown'}")
         logger.info("Forge adapter paired with %s as %s", self.server_url, self.agent_id or "unknown agent")
 
@@ -305,6 +316,11 @@ def _env_enablement() -> Optional[dict[str, str]]:
         value = os.getenv(env_key, "").strip()
         if value:
             seed[extra_key] = value
+    state = _load_state()
+    for extra_key in _ENV_TO_EXTRA.values():
+        value = state.get(extra_key)
+        if value:
+            seed.setdefault(extra_key, str(value))
     has_pairing = bool(seed.get("server_url") and seed.get("pairing_code"))
     has_channel = bool(seed.get("channel_url") and seed.get("channel_token"))
     if not (has_pairing or has_channel):
@@ -363,6 +379,10 @@ def _config_value(config: PlatformConfig, key: str, default: str = "") -> str:
     value = getattr(config, key.lower(), None) or getattr(config, _ENV_TO_EXTRA.get(key, key.lower()), None)
     if value:
         return str(value)
+    state = _load_state()
+    state_value = state.get(_ENV_TO_EXTRA.get(key, key.lower()))
+    if state_value:
+        return str(state_value)
     return default
 
 
@@ -378,6 +398,9 @@ def _config_source(config: PlatformConfig, key: str) -> str:
             return "extra"
     if getattr(config, key.lower(), None) or getattr(config, _ENV_TO_EXTRA.get(key, key.lower()), None):
         return "attribute"
+    state = _load_state()
+    if state.get(_ENV_TO_EXTRA.get(key, key.lower())):
+        return "state"
     return "default"
 
 
@@ -411,6 +434,34 @@ def _hermes_api_key(config: PlatformConfig) -> str:
         if value:
             return value
     return ""
+
+
+def _state_path() -> Path:
+    home = Path(os.getenv("HERMES_HOME") or Path.home() / ".hermes")
+    return home / "forge-channel.json"
+
+
+def _load_state() -> dict[str, Any]:
+    try:
+        path = _state_path()
+        if not path.exists():
+            return {}
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception as exc:
+        _debug(f"state load failed error={exc}")
+        return {}
+
+
+def _save_state(state: dict[str, Any]) -> None:
+    try:
+        path = _state_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
+        path.chmod(0o600)
+        _debug(f"state saved path={path}")
+    except Exception as exc:
+        _debug(f"state save failed error={exc}")
 
 
 def _debug(message: str) -> None:
