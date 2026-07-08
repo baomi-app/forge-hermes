@@ -36,6 +36,8 @@ _ENV_TO_EXTRA = {
     "FORGE_RUNTIME_NAME": "runtime_name",
     "FORGE_CHANNEL_URL": "channel_url",
     "FORGE_CHANNEL_TOKEN": "channel_token",
+    "FORGE_HERMES_API_URL": "hermes_api_url",
+    "FORGE_HERMES_API_KEY": "hermes_api_key",
 }
 
 _IMPORT_ENV = {key: os.getenv(key, "").strip() for key in _ENV_TO_EXTRA}
@@ -59,6 +61,8 @@ class ForgePlatformAdapter(BasePlatformAdapter):
         self.channel_url = _config_value(config, "FORGE_CHANNEL_URL").rstrip("/")
         self.channel_token = _config_value(config, "FORGE_CHANNEL_TOKEN")
         self.runtime_name = _config_value(config, "FORGE_RUNTIME_NAME", "Hermes")
+        self.hermes_api_url = _hermes_api_url(config)
+        self.hermes_api_key = _hermes_api_key(config)
         _debug(
             "resolved config "
             f"server={_config_source(config, 'FORGE_SERVER_URL')} "
@@ -161,6 +165,9 @@ class ForgePlatformAdapter(BasePlatformAdapter):
                 if not item:
                     await asyncio.sleep(1.5)
                     continue
+                if item.get("kind") == "command":
+                    await self._handle_command(item)
+                    continue
                 session_id = str(item.get("sessionId") or item.get("chatId") or "forge")
                 text = str(item.get("text") or "")
                 if not text:
@@ -186,6 +193,33 @@ class ForgePlatformAdapter(BasePlatformAdapter):
             except Exception:
                 logger.exception("Forge poll loop failed")
                 await asyncio.sleep(5)
+
+    async def _handle_command(self, item: dict[str, Any]) -> None:
+        command_id = str(item.get("id") or "")
+        if not command_id:
+            return
+        try:
+            _debug(f"command request id={command_id} method={item.get('method')} path={item.get('path')}")
+            status, content_type, body = await asyncio.to_thread(
+                _execute_hermes_command,
+                self.hermes_api_url,
+                self.hermes_api_key,
+                str(item.get("method") or "GET"),
+                str(item.get("path") or "/"),
+                item.get("body") if isinstance(item.get("body"), str) else None,
+            )
+            _debug(f"command response id={command_id} status={status}")
+        except Exception as exc:
+            status = 502
+            content_type = "application/json; charset=utf-8"
+            body = json.dumps({"error": str(exc)})
+            _debug(f"command failed id={command_id} error={exc}")
+        await asyncio.to_thread(
+            _post_json,
+            f"{self.channel_url}/runtime/commands/{command_id}/response",
+            {"status": status, "contentType": content_type, "body": body},
+            self.channel_token,
+        )
 
     async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
         return {
@@ -347,6 +381,22 @@ def _first_config_value(yaml_cfg: dict, platform_cfg: dict, env_key: str, extra_
     return None
 
 
+def _hermes_api_url(config: PlatformConfig) -> str:
+    for key in ["FORGE_HERMES_API_URL", "HERMES_API_URL", "API_SERVER_URL", "HERMES_ENDPOINT"]:
+        value = _config_value(config, key)
+        if value:
+            return value.rstrip("/")
+    return "http://127.0.0.1:8765"
+
+
+def _hermes_api_key(config: PlatformConfig) -> str:
+    for key in ["FORGE_HERMES_API_KEY", "HERMES_API_KEY", "API_SERVER_KEY", "HERMES_API_TOKEN"]:
+        value = _config_value(config, key)
+        if value:
+            return value
+    return ""
+
+
 def _debug(message: str) -> None:
     if os.getenv("FORGE_DEBUG", "").lower() not in {"1", "true", "yes", "on"}:
         return
@@ -394,6 +444,46 @@ def _post_json(url: str, payload: dict[str, Any], token: str = "") -> dict[str, 
         detail = error.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"Forge pairing failed ({error.code}): {detail}") from error
     return json.loads(text) if text else {}
+
+
+def _execute_hermes_command(base_url: str, api_key: str, method: str, path: str, body: Optional[str]) -> tuple[int, str, str]:
+    hermes_path = _hermes_api_path(path)
+    headers = {**_HTTP_HEADERS}
+    data = None
+    if body is not None:
+        data = body.encode("utf-8")
+        headers["content-type"] = "application/json"
+    if api_key:
+        headers["authorization"] = f"Bearer {api_key}"
+    request = urllib.request.Request(
+        f"{base_url}{hermes_path}",
+        data=data,
+        headers=headers,
+        method=method,
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=55) as response:
+            text = response.read().decode("utf-8")
+            return response.status, response.headers.get("content-type", "application/json; charset=utf-8"), text
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", errors="replace")
+        return error.code, error.headers.get("content-type", "application/json; charset=utf-8"), detail
+
+
+def _hermes_api_path(path: str) -> str:
+    if path == "/health" or path.startswith("/health?"):
+        return path
+    if path == "/capabilities" or path.startswith("/capabilities?"):
+        return path.replace("/capabilities", "/v1/capabilities", 1)
+    if path == "/sessions" or path.startswith("/sessions?") or path.startswith("/sessions/"):
+        return f"/api{path}"
+    if path == "/automations" or path.startswith("/automations?"):
+        return path.replace("/automations", "/api/jobs", 1)
+    if path.startswith("/automations/"):
+        return path.replace("/automations/", "/api/jobs/", 1)
+    if path == "/runs" or path.startswith("/runs?") or path.startswith("/runs/"):
+        return f"/v1{path}"
+    raise RuntimeError(f"Unsupported Forge channel command path: {path}")
 
 
 def _get_json(url: str, token: str) -> dict[str, Any]:
