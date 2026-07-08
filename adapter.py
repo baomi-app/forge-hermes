@@ -37,6 +37,11 @@ _ENV_TO_EXTRA = {
     "FORGE_CHANNEL_TOKEN": "channel_token",
 }
 
+_HTTP_HEADERS = {
+    "accept": "application/json",
+    "user-agent": "Forge-Hermes/0.1 (+https://github.com/baomi-app/forge-hermes)",
+}
+
 
 class ForgePlatformAdapter(BasePlatformAdapter):
     """Hermes messaging adapter that pairs Hermes with Forge Console."""
@@ -322,7 +327,7 @@ _debug("module imported")
 
 def _post_json(url: str, payload: dict[str, Any], token: str = "") -> dict[str, Any]:
     body = json.dumps(payload).encode("utf-8")
-    headers = {"content-type": "application/json"}
+    headers = {**_HTTP_HEADERS, "content-type": "application/json"}
     if token:
         headers["authorization"] = f"Bearer {token}"
     request = urllib.request.Request(
@@ -343,7 +348,7 @@ def _post_json(url: str, payload: dict[str, Any], token: str = "") -> dict[str, 
 def _get_json(url: str, token: str) -> dict[str, Any]:
     request = urllib.request.Request(
         url,
-        headers={"authorization": f"Bearer {token}"},
+        headers={**_HTTP_HEADERS, "authorization": f"Bearer {token}"},
         method="GET",
     )
     try:
