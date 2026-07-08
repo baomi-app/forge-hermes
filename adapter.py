@@ -267,11 +267,19 @@ def _apply_yaml_config(yaml_cfg: dict, platform_cfg: dict) -> Optional[dict[str,
     _debug("apply_yaml_config called")
     seed = {}
     for env_key, extra_key in _ENV_TO_EXTRA.items():
+        existing_env = os.getenv(env_key, "").strip()
         value = _first_config_value(yaml_cfg, platform_cfg, env_key, extra_key)
         if value:
             text = str(value).strip()
             seed[extra_key] = text
             os.environ.setdefault(env_key, text)
+            if env_key == "FORGE_PAIRING_CODE":
+                _debug(
+                    "apply_yaml_config pairing "
+                    f"existing_env={_short_secret_hash(existing_env)} "
+                    f"yaml={_short_secret_hash(text)} "
+                    f"final_env={_short_secret_hash(os.getenv(env_key, ''))}"
+                )
     return seed or None
 
 
