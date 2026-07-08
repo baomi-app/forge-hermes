@@ -244,8 +244,16 @@ def register(ctx) -> None:
         {
             "check_fn": check_requirements,
             "validate_config": validate_config,
-            "required_env": ["FORGE_SERVER_URL", "FORGE_PAIRING_CODE"],
-            "optional_env": ["FORGE_RUNTIME_NAME", "FORGE_CHANNEL_URL", "FORGE_CHANNEL_TOKEN"],
+            "required_env": [],
+            "optional_env": [
+                "FORGE_SERVER_URL",
+                "FORGE_PAIRING_CODE",
+                "FORGE_RUNTIME_NAME",
+                "FORGE_CHANNEL_URL",
+                "FORGE_CHANNEL_TOKEN",
+                "FORGE_HERMES_API_URL",
+                "FORGE_HERMES_API_KEY",
+            ],
             "env_enablement_fn": _env_enablement,
             "apply_yaml_config_fn": _apply_yaml_config,
             "allow_all_env": "FORGE_ALLOW_ALL_USERS",
@@ -262,8 +270,16 @@ def register(ctx) -> None:
             **base_kwargs,
             check_fn=check_requirements,
             validate_config=validate_config,
-            required_env=["FORGE_SERVER_URL", "FORGE_PAIRING_CODE"],
-            optional_env=["FORGE_RUNTIME_NAME", "FORGE_CHANNEL_URL", "FORGE_CHANNEL_TOKEN"],
+            required_env=[],
+            optional_env=[
+                "FORGE_SERVER_URL",
+                "FORGE_PAIRING_CODE",
+                "FORGE_RUNTIME_NAME",
+                "FORGE_CHANNEL_URL",
+                "FORGE_CHANNEL_TOKEN",
+                "FORGE_HERMES_API_URL",
+                "FORGE_HERMES_API_KEY",
+            ],
         )
         _debug("register_platform minimal succeeded")
 
