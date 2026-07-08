@@ -11,6 +11,8 @@ import asyncio
 import json
 import logging
 import os
+from datetime import datetime, timezone
+from pathlib import Path
 import urllib.error
 import urllib.request
 from typing import Any, Dict, Optional
@@ -36,6 +38,7 @@ class ForgePlatformAdapter(BasePlatformAdapter):
     supports_async_delivery = True
 
     def __init__(self, config: PlatformConfig):
+        _debug("adapter init")
         super().__init__(config, Platform("forge"))
         self.server_url = _config_value(config, "FORGE_SERVER_URL").rstrip("/")
         self.pairing_code = _config_value(config, "FORGE_PAIRING_CODE")
@@ -46,6 +49,7 @@ class ForgePlatformAdapter(BasePlatformAdapter):
         self._poll_task: Optional[asyncio.Task] = None
 
     async def connect(self, *, is_reconnect: bool = False) -> bool:
+        _debug("adapter connect")
         logger.info("Starting Forge adapter")
         if not self.channel_url or not self.channel_token:
             if not self.server_url:
@@ -60,6 +64,7 @@ class ForgePlatformAdapter(BasePlatformAdapter):
         return True
 
     async def _pair(self) -> None:
+        _debug("pairing request")
         payload = {
             "pairingCode": self.pairing_code,
             "runtimeInstanceId": os.uname().nodename if hasattr(os, "uname") else "hermes",
@@ -84,6 +89,7 @@ class ForgePlatformAdapter(BasePlatformAdapter):
         self.channel_token = str(result.get("channelToken") or self.channel_token)
         if not self.channel_url or not self.channel_token:
             raise RuntimeError("Forge pairing did not return channelUrl/channelToken")
+        _debug(f"paired agent={self.agent_id or 'unknown'}")
         logger.info("Forge adapter paired with %s as %s", self.server_url, self.agent_id or "unknown agent")
 
     async def disconnect(self) -> None:
@@ -170,6 +176,7 @@ class ForgePlatformAdapter(BasePlatformAdapter):
 
 def register(ctx) -> None:
     """Hermes plugin entry point."""
+    _debug("register called")
     ctx.register_platform(
         name="forge",
         label="Forge Console",
@@ -187,10 +194,12 @@ def register(ctx) -> None:
 
 
 def check_requirements() -> bool:
+    _debug("check_requirements called")
     return True
 
 
 def validate_config(config: PlatformConfig) -> bool:
+    _debug("validate_config called")
     channel_url = _config_value(config, "FORGE_CHANNEL_URL")
     channel_token = _config_value(config, "FORGE_CHANNEL_TOKEN")
     if channel_url and channel_token:
@@ -199,6 +208,7 @@ def validate_config(config: PlatformConfig) -> bool:
 
 
 def _env_enablement() -> Optional[dict[str, str]]:
+    _debug("env_enablement called")
     seed = {}
     for env_key, extra_key in _ENV_TO_EXTRA.items():
         value = os.getenv(env_key, "").strip()
@@ -207,12 +217,15 @@ def _env_enablement() -> Optional[dict[str, str]]:
     has_pairing = bool(seed.get("server_url") and seed.get("pairing_code"))
     has_channel = bool(seed.get("channel_url") and seed.get("channel_token"))
     if not (has_pairing or has_channel):
+        _debug("env_enablement skipped")
         return None
     seed.setdefault("runtime_name", "Hermes")
+    _debug("env_enablement enabled")
     return seed
 
 
 def _apply_yaml_config(yaml_cfg: dict, platform_cfg: dict) -> Optional[dict[str, str]]:
+    _debug("apply_yaml_config called")
     seed = {}
     for env_key, extra_key in _ENV_TO_EXTRA.items():
         value = _first_config_value(yaml_cfg, platform_cfg, env_key, extra_key)
@@ -250,6 +263,23 @@ def _first_config_value(yaml_cfg: dict, platform_cfg: dict, env_key: str, extra_
         if value:
             return value
     return None
+
+
+def _debug(message: str) -> None:
+    if os.getenv("FORGE_DEBUG", "").lower() not in {"1", "true", "yes", "on"}:
+        return
+    try:
+        home = Path(os.getenv("HERMES_HOME") or Path.home() / ".hermes")
+        path = home / "forge-plugin-debug.log"
+        timestamp = datetime.now(timezone.utc).isoformat()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(f"{timestamp} {message}\n")
+    except Exception:
+        pass
+
+
+_debug("module imported")
 
 
 def _post_json(url: str, payload: dict[str, Any], token: str = "") -> dict[str, Any]:
