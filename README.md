@@ -47,12 +47,16 @@ uses that channel to:
 
 Forge can also ask the plugin to query the local Hermes API for runtime-owned
 state such as sessions, scheduled jobs, job runs, and run events. Configure how
-the plugin reaches that API from the machine running Hermes:
+the plugin reaches that API on the machine running this Hermes runtime:
 
 ```bash
 hermes config set FORGE_HERMES_API_URL https://hermes.baomi.app
 hermes config set FORGE_HERMES_API_KEY your-hermes-api-server-key
 ```
+
+Forge does not infer these values during pairing. Pairing only creates the
+Forge channel; API inspection uses the Hermes API settings local to the paired
+runtime.
 
 The same values can be provided as environment variables. The plugin checks
 `FORGE_HERMES_API_URL`, `HERMES_API_URL`, `API_SERVER_URL`, then

@@ -112,14 +112,6 @@ class ForgePlatformAdapter(BasePlatformAdapter):
             self.agent_id = str(agent.get("id") or "")
         self.channel_url = str(result.get("channelUrl") or self.channel_url).rstrip("/")
         self.channel_token = str(result.get("channelToken") or self.channel_token)
-        runtime_config = result.get("runtimeConfig") if isinstance(result, dict) else None
-        if isinstance(runtime_config, dict):
-            hermes_api_url = str(runtime_config.get("hermesApiUrl") or "").strip()
-            hermes_api_key = str(runtime_config.get("hermesApiKey") or "").strip()
-            if hermes_api_url:
-                self.hermes_api_url = hermes_api_url.rstrip("/")
-            if hermes_api_key:
-                self.hermes_api_key = hermes_api_key
         if not self.channel_url or not self.channel_token:
             raise RuntimeError("Forge pairing did not return channelUrl/channelToken")
         _save_state(
