@@ -46,6 +46,7 @@ class ForgePlatformAdapter(BasePlatformAdapter):
         self._poll_task: Optional[asyncio.Task] = None
 
     async def connect(self, *, is_reconnect: bool = False) -> bool:
+        logger.info("Starting Forge adapter")
         if not self.channel_url or not self.channel_token:
             if not self.server_url:
                 raise RuntimeError("FORGE_SERVER_URL is required")
@@ -55,6 +56,7 @@ class ForgePlatformAdapter(BasePlatformAdapter):
 
         self._running = True
         self._poll_task = asyncio.create_task(self._poll_loop())
+        self._mark_connected()
         return True
 
     async def _pair(self) -> None:
@@ -92,6 +94,7 @@ class ForgePlatformAdapter(BasePlatformAdapter):
                 await self._poll_task
             except asyncio.CancelledError:
                 pass
+        self._mark_disconnected()
 
     async def send(
         self,
@@ -184,20 +187,15 @@ def register(ctx) -> None:
 
 
 def check_requirements() -> bool:
-    return _env_enablement() is not None
+    return True
 
 
-def validate_config(config: PlatformConfig) -> list[str]:
-    errors: list[str] = []
+def validate_config(config: PlatformConfig) -> bool:
     channel_url = _config_value(config, "FORGE_CHANNEL_URL")
     channel_token = _config_value(config, "FORGE_CHANNEL_TOKEN")
     if channel_url and channel_token:
-        return errors
-    if not _config_value(config, "FORGE_SERVER_URL"):
-        errors.append("FORGE_SERVER_URL is required")
-    if not _config_value(config, "FORGE_PAIRING_CODE"):
-        errors.append("FORGE_PAIRING_CODE is required")
-    return errors
+        return True
+    return bool(_config_value(config, "FORGE_SERVER_URL") and _config_value(config, "FORGE_PAIRING_CODE"))
 
 
 def _env_enablement() -> Optional[dict[str, str]]:
