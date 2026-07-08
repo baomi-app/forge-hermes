@@ -8,6 +8,7 @@ incoming text to Hermes, and posts Hermes replies back to Forge.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import logging
 import os
@@ -20,6 +21,11 @@ from typing import Any, Dict, Optional
 from gateway.config import Platform, PlatformConfig
 from gateway.platforms.base import BasePlatformAdapter, MessageEvent, MessageType, SendResult
 from gateway.session import SessionSource
+
+try:
+    from gateway.platform_registry import PlatformEntry
+except Exception:
+    PlatformEntry = None
 
 logger = logging.getLogger(__name__)
 
@@ -177,20 +183,40 @@ class ForgePlatformAdapter(BasePlatformAdapter):
 def register(ctx) -> None:
     """Hermes plugin entry point."""
     _debug("register called")
-    ctx.register_platform(
-        name="forge",
-        label="Forge Console",
-        adapter_factory=lambda cfg: ForgePlatformAdapter(cfg),
-        check_fn=check_requirements,
-        validate_config=validate_config,
-        required_env=["FORGE_SERVER_URL", "FORGE_PAIRING_CODE"],
-        optional_env=["FORGE_RUNTIME_NAME", "FORGE_CHANNEL_URL", "FORGE_CHANNEL_TOKEN"],
-        env_enablement_fn=_env_enablement,
-        apply_yaml_config_fn=_apply_yaml_config,
-        allow_all_env="FORGE_ALLOW_ALL_USERS",
-        max_message_length=0,
-        platform_hint="You are chatting through Forge Console. Markdown is supported.",
+    if not hasattr(ctx, "register_platform"):
+        raise RuntimeError("Hermes plugin context does not expose register_platform")
+
+    base_kwargs = {
+        "name": "forge",
+        "label": "Forge Console",
+        "adapter_factory": lambda cfg: ForgePlatformAdapter(cfg),
+    }
+    entry_kwargs = _supported_platform_entry_kwargs(
+        {
+            "check_fn": check_requirements,
+            "validate_config": validate_config,
+            "required_env": ["FORGE_SERVER_URL", "FORGE_PAIRING_CODE"],
+            "optional_env": ["FORGE_RUNTIME_NAME", "FORGE_CHANNEL_URL", "FORGE_CHANNEL_TOKEN"],
+            "env_enablement_fn": _env_enablement,
+            "apply_yaml_config_fn": _apply_yaml_config,
+            "allow_all_env": "FORGE_ALLOW_ALL_USERS",
+            "max_message_length": 0,
+            "platform_hint": "You are chatting through Forge Console. Markdown is supported.",
+        }
     )
+    try:
+        ctx.register_platform(**base_kwargs, **entry_kwargs)
+        _debug(f"register_platform succeeded keys={','.join(sorted(entry_kwargs))}")
+    except TypeError as exc:
+        _debug(f"register_platform type error: {exc}; retrying minimal")
+        ctx.register_platform(
+            **base_kwargs,
+            check_fn=check_requirements,
+            validate_config=validate_config,
+            required_env=["FORGE_SERVER_URL", "FORGE_PAIRING_CODE"],
+            optional_env=["FORGE_RUNTIME_NAME", "FORGE_CHANNEL_URL", "FORGE_CHANNEL_TOKEN"],
+        )
+        _debug("register_platform minimal succeeded")
 
 
 def check_requirements() -> bool:
@@ -234,6 +260,18 @@ def _apply_yaml_config(yaml_cfg: dict, platform_cfg: dict) -> Optional[dict[str,
             seed[extra_key] = text
             os.environ.setdefault(env_key, text)
     return seed or None
+
+
+def _supported_platform_entry_kwargs(entry_kwargs: dict[str, Any]) -> dict[str, Any]:
+    if PlatformEntry is None or not dataclasses.is_dataclass(PlatformEntry):
+        _debug("platform entry fields unavailable; using all register kwargs")
+        return entry_kwargs
+    fields = {field.name for field in dataclasses.fields(PlatformEntry)}
+    filtered = {key: value for key, value in entry_kwargs.items() if key in fields}
+    dropped = sorted(set(entry_kwargs) - set(filtered))
+    if dropped:
+        _debug(f"dropped unsupported register kwargs={','.join(dropped)}")
+    return filtered
 
 
 def _config_value(config: PlatformConfig, key: str, default: str = "") -> str:
