@@ -21,6 +21,14 @@ from gateway.session import SessionSource
 
 logger = logging.getLogger(__name__)
 
+_ENV_TO_EXTRA = {
+    "FORGE_SERVER_URL": "server_url",
+    "FORGE_PAIRING_CODE": "pairing_code",
+    "FORGE_RUNTIME_NAME": "runtime_name",
+    "FORGE_CHANNEL_URL": "channel_url",
+    "FORGE_CHANNEL_TOKEN": "channel_token",
+}
+
 
 class ForgePlatformAdapter(BasePlatformAdapter):
     """Hermes messaging adapter that pairs Hermes with Forge Console."""
@@ -167,15 +175,24 @@ def register(ctx) -> None:
         validate_config=validate_config,
         required_env=["FORGE_SERVER_URL", "FORGE_PAIRING_CODE"],
         optional_env=["FORGE_RUNTIME_NAME", "FORGE_CHANNEL_URL", "FORGE_CHANNEL_TOKEN"],
+        env_enablement_fn=_env_enablement,
+        apply_yaml_config_fn=_apply_yaml_config,
+        allow_all_env="FORGE_ALLOW_ALL_USERS",
+        max_message_length=0,
+        platform_hint="You are chatting through Forge Console. Markdown is supported.",
     )
 
 
 def check_requirements() -> bool:
-    return True
+    return _env_enablement() is not None
 
 
 def validate_config(config: PlatformConfig) -> list[str]:
     errors: list[str] = []
+    channel_url = _config_value(config, "FORGE_CHANNEL_URL")
+    channel_token = _config_value(config, "FORGE_CHANNEL_TOKEN")
+    if channel_url and channel_token:
+        return errors
     if not _config_value(config, "FORGE_SERVER_URL"):
         errors.append("FORGE_SERVER_URL is required")
     if not _config_value(config, "FORGE_PAIRING_CODE"):
@@ -183,16 +200,58 @@ def validate_config(config: PlatformConfig) -> list[str]:
     return errors
 
 
+def _env_enablement() -> Optional[dict[str, str]]:
+    seed = {}
+    for env_key, extra_key in _ENV_TO_EXTRA.items():
+        value = os.getenv(env_key, "").strip()
+        if value:
+            seed[extra_key] = value
+    has_pairing = bool(seed.get("server_url") and seed.get("pairing_code"))
+    has_channel = bool(seed.get("channel_url") and seed.get("channel_token"))
+    if not (has_pairing or has_channel):
+        return None
+    seed.setdefault("runtime_name", "Hermes")
+    return seed
+
+
+def _apply_yaml_config(yaml_cfg: dict, platform_cfg: dict) -> Optional[dict[str, str]]:
+    seed = {}
+    for env_key, extra_key in _ENV_TO_EXTRA.items():
+        value = _first_config_value(yaml_cfg, platform_cfg, env_key, extra_key)
+        if value:
+            text = str(value).strip()
+            seed[extra_key] = text
+            os.environ.setdefault(env_key, text)
+    return seed or None
+
+
 def _config_value(config: PlatformConfig, key: str, default: str = "") -> str:
     extra = getattr(config, "extra", None)
     if isinstance(extra, dict):
-        value = extra.get(key)
+        extra_key = _ENV_TO_EXTRA.get(key, key.lower())
+        value = extra.get(key) or extra.get(key.lower()) or extra.get(extra_key)
         if value:
             return str(value)
-    value = getattr(config, key.lower(), None)
+    value = getattr(config, key.lower(), None) or getattr(config, _ENV_TO_EXTRA.get(key, key.lower()), None)
     if value:
         return str(value)
     return os.environ.get(key, default)
+
+
+def _first_config_value(yaml_cfg: dict, platform_cfg: dict, env_key: str, extra_key: str) -> Optional[Any]:
+    candidates = [
+        yaml_cfg.get(env_key),
+        yaml_cfg.get(extra_key),
+        platform_cfg.get(env_key) if isinstance(platform_cfg, dict) else None,
+        platform_cfg.get(extra_key) if isinstance(platform_cfg, dict) else None,
+    ]
+    extra = platform_cfg.get("extra") if isinstance(platform_cfg, dict) else None
+    if isinstance(extra, dict):
+        candidates.extend([extra.get(env_key), extra.get(extra_key)])
+    for value in candidates:
+        if value:
+            return value
+    return None
 
 
 def _post_json(url: str, payload: dict[str, Any], token: str = "") -> dict[str, Any]:
