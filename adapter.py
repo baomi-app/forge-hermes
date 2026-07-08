@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import hashlib
 import json
 import logging
 import os
@@ -75,7 +76,7 @@ class ForgePlatformAdapter(BasePlatformAdapter):
         return True
 
     async def _pair(self) -> None:
-        _debug("pairing request")
+        _debug(f"pairing request code_hash={_short_secret_hash(self.pairing_code)} server={self.server_url}")
         payload = {
             "pairingCode": self.pairing_code,
             "runtimeInstanceId": os.uname().nodename if hasattr(os, "uname") else "hermes",
@@ -280,6 +281,9 @@ def _supported_platform_entry_kwargs(entry_kwargs: dict[str, Any]) -> dict[str, 
 
 
 def _config_value(config: PlatformConfig, key: str, default: str = "") -> str:
+    env_value = os.environ.get(key)
+    if env_value:
+        return env_value
     extra = getattr(config, "extra", None)
     if isinstance(extra, dict):
         extra_key = _ENV_TO_EXTRA.get(key, key.lower())
@@ -289,7 +293,7 @@ def _config_value(config: PlatformConfig, key: str, default: str = "") -> str:
     value = getattr(config, key.lower(), None) or getattr(config, _ENV_TO_EXTRA.get(key, key.lower()), None)
     if value:
         return str(value)
-    return os.environ.get(key, default)
+    return default
 
 
 def _first_config_value(yaml_cfg: dict, platform_cfg: dict, env_key: str, extra_key: str) -> Optional[Any]:
@@ -320,6 +324,12 @@ def _debug(message: str) -> None:
             handle.write(f"{timestamp} {message}\n")
     except Exception:
         pass
+
+
+def _short_secret_hash(value: str) -> str:
+    if not value:
+        return "empty"
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:10]
 
 
 _debug("module imported")
